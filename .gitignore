@@ -3,3 +3,7 @@
 
 # 原始会话记录（含敏感信息，仅本地保留；脱敏版提交到 sessions/）
 /session-*.md
+
+# Python 缓存
+__pycache__/
+*.pyc
