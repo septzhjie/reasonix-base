@@ -1,0 +1,2 @@
+[permissions]
+allow = ["Bash=echo \"===== 内存信息 =====\"; free -h; echo; echo \"===== 磁盘信息 =====\"; df -hT 2>/dev/null | grep -vE \"tmpfs|overlay|loop\" || df -h", "Bash=env | grep -iE 'feishu|lark|webhook|token|bot' | sed 's/=.*/=<redacted>/' ; echo \"---done---\""]
