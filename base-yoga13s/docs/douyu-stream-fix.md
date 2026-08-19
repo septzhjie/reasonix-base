@@ -251,7 +251,7 @@ ssh yoga13 '/usr/local/bin/update_dy_cookie.sh'
 | 录制主容器 | `live` | `douyin-live`（live-reco compose） |
 | 配置目录 | `/opt/1panel/docker/compose/config/` | `/opt/1panel/docker/compose/live-reco/live/config/` |
 | douyu-live compose | `/opt/1panel/docker/compose/douyu-live/douyu-live.yaml` | 同路径 |
-| spider.py overlay | 修复版 md5 `ba102ac` | 修复版 md5 **`5c478a6`**（同 workspace `base-yoga13s/docs/spider.py.patched`） |
+| spider.py overlay | 修复版 md5 `ba102ac` | 修复版 md5 ~~`5c478a6`~~ **`8503dd3`**（2026-08-19 补 §9.2 cookie 补丁后；同 workspace `base-yoga13s/docs/spider.py.patched`） |
 | 下载挂载 | `/opt/1panel/docker/compose/douyu-live/downloads` | **clouddrive 同步根** `/opt/1panel/docker/compose/live-reco/clouddrive2/142.171.203.142/clouddrive:/app/downloads:rslave`（与 douyin-live 共用，随 123 云盘同步） |
 | config.ini | 只含斗鱼cookie，其余清空 | **全平台 cookie 均空**（含斗鱼，用匿名 540p）；推送关闭；保存路径 `/app/downloads/斗鱼直播` |
 | 镜像 | 有斗鱼专用镜像 | `ihmily/douyin-live-recorder:v4.0.7`（本地已有，含旧版失效 spider） |
@@ -268,7 +268,7 @@ ssh yoga13 '/usr/local/bin/update_dy_cookie.sh'
 │   └── URL_config.ini                   # 默认仅注释示例行
 ├── logs/                                # PlayURL.log / streamget.log
 ├── backup_config/                       # 启动时自动备份
-└── code_overlay/src/spider.py           # 修复版 md5 5c478a6, :ro 挂载
+└── code_overlay/src/spider.py           # 修复版 md5 ~~5c478a6~~ 8503dd3（含§9.2 cookie补丁）, :ro 挂载
 ```
 
 `douyu-live.yaml`（与 §10 相比：无独立 downloads、overlay 挂 `:ro`、无 compose `version` 键避免告警）：
@@ -313,7 +313,7 @@ ssh cone-142 'cd /opt/1panel/docker/compose/douyu-live && docker compose -f douy
 
 ```bash
 # 1. overlay 生效（md5 一致）
-docker exec douyu-live md5sum /app/src/spider.py          # 5c478a6...
+docker exec douyu-live md5sum /app/src/spider.py          # ~~5c478a6~~ 8503dd3 (含§9.2 cookie补丁)
 md5sum /opt/1panel/docker/compose/douyu-live/code_overlay/src/spider.py
 
 # 2. 取流全链路（6925114=轰轰仔，§9.1 验证房间）
@@ -339,6 +339,7 @@ docker logs douyu-live 2>&1 | grep -c ERROR                # → 0
 ### 11.5 当前状态与后续
 
 - 容器 `douyu-live` Up、restart unless-stopped；`douyin-live` 不受影响（双容器并存）
-- **当前为匿名 540p 录制**（config 斗鱼cookie 空）。若要解锁原画 1440p，按 §10.2 更新 `斗鱼cookie` 后 **restart 容器**（main.py 启动时读一次 cookie）
+- ~~**当前为匿名 540p 录制**（config 斗鱼cookie 空）~~ **已带斗鱼cookie 录制原画**（2026-08-19：config.ini 写入 cookie 且 spider.py 补上 §9.2 cookie补丁后，取流实测 2560×1440/8.4Mbps，流名无 `_900` 后缀）。cookie 过期后**必须重启容器**（main.py 启动时读一次 cookie）；更新 cookie 用 `/usr/local/bin/update_dy_cookie.sh`
+- **spider.py md5 变更记录（2026-08-19）**：`5c478a6`（仅取流修复，含旧"不要透传cookie"注释）→ `8503dd3`（补 §9.2 cookie补丁：get_token_js 加 cookies 参数 + get_douyu_stream_data 提取 dy_did/acf_did 并透传 Cookie 头）。工作区 `base-yoga13s/docs/spider.py.patched` 已同步为 `8503dd3`
 - 产物落在 clouddrive 根 `斗鱼直播/`（首个录制自动创建目录），随 clouddrive2 同步到 123 云盘
 - 开关房间：直接编辑 `douyu-live/config/URL_config.ini` 行首 `#`（cone-142 的 toggle_room.sh 同样只作用于 douyin-live 路径，见 B 节备注）

@@ -521,7 +521,7 @@ def md5(data) -> str:
     return hashlib.md5(data.encode('utf-8')).hexdigest()
 
 
-async def get_token_js(rid: str, did: str, proxy_addr: OptionalStr = None) -> dict:
+async def get_token_js(rid: str, did: str, proxy_addr: OptionalStr = None, cookies: OptionalStr = None) -> dict:
     # 新版斗鱼签名算法（逆向自 douyu web-encrypt JS，2026-08 验证有效）
     # 1. 获取加密 key 材料
     url = f'https://www.douyu.com/wgapi/livenc/liveweb/websec/getEncryption?did={did}'
@@ -529,6 +529,8 @@ async def get_token_js(rid: str, did: str, proxy_addr: OptionalStr = None) -> di
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0',
         'Referer': f'https://www.douyu.com/{rid}',
     }
+    if cookies:
+        headers['Cookie'] = cookies
     json_str = await async_req(url=url, proxy_addr=proxy_addr, headers=headers)
     key_data = json.loads(json_str)['data']
 
@@ -592,13 +594,19 @@ async def get_douyu_info_data(url: str, proxy_addr: OptionalStr = None, cookies:
 async def get_douyu_stream_data(rid: str, rate: str = '-1', proxy_addr: OptionalStr = None,
                           cookies: OptionalStr = None) -> dict:
     did = '10000000000000000000000000001501'
-    params_dict = await get_token_js(rid, did, proxy_addr=proxy_addr)
+    if cookies:
+        m = re.search(r"(?:^|;\s*)(?:dy_did|acf_did)=([^;]+)", cookies)
+        if m:
+            did = m.group(1)
+    params_dict = await get_token_js(rid, did, proxy_addr=proxy_addr, cookies=cookies)
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0',
         'Referer': f'https://www.douyu.com/{rid}',
         'Content-Type': 'application/x-www-form-urlencoded',
     }
-    # 注意：不要透传 cookie。取流接口 getH5PlayV1 不校验登录，且旧/过期 cookie 反而触发"鉴权失败"
+    # 带 cookie 时透传 Cookie 头以解锁高画质；无 cookie 保持匿名（540p）
+    if cookies:
+        headers['Cookie'] = cookies
 
     # 新版 getH5PlayV1 参数：enc_data/tt/did/auth + rate/ver/hevc/fa/ive
     # 注意：斗鱼要求手动拼接 form（不 URL 编码特殊字符），参照 web-encrypt JS 的字符串拼接方式
