@@ -31,7 +31,7 @@
    │ 主动                        被动                          │
    │ 手动开关录制                   每日 cron 检查                │
    │ douyu-live/config/           check_dy_cookie.sh           │
-   │ URL_config.ini 加/去 #        剩≤2天写日志提醒               │
+   │ URL_config.ini 加/去 #        剩≤2天 写日志+发邮件提醒       │
    └───────────────────────────┼───────────────────────────┘
                                │
                     update_dy_cookie.sh（手动换cookie）
@@ -129,7 +129,7 @@ ssh yoga13 'ls -laR /opt/1panel/docker/compose/douyu-live/downloads/'
 
 | 工具 | 线上位置 | 工作区副本 | 作用 |
 |---|---|---|---|
-| 检查脚本 | `/usr/local/bin/check_dy_cookie.sh` | `scripts/douyu-live/check_dy_cookie.sh` | 解析 JWT `exp`，剩 ≤2 天写告警日志 |
+| 检查脚本 | `/usr/local/bin/check_dy_cookie.sh` | `scripts/douyu-live/check_dy_cookie.sh` | 解析 JWT `exp`，剩 ≤2 天时写告警日志**并发邮件**到 `NOTIFY_EMAIL`（默认 `1211875002@qq.com`） |
 | 更新脚本 | `/usr/local/bin/update_dy_cookie.sh` | `scripts/douyu-live/update_dy_cookie.sh` | 交互粘贴新 cookie → 写入 → 重启 → 验证 |
 | compose | `/opt/1panel/docker/compose/douyu-live/douyu-live.yaml` | `scripts/douyu-live/douyu-live.yaml` | 容器编排 |
 
@@ -149,15 +149,18 @@ ssh yoga13 'ls -laR /opt/1panel/docker/compose/douyu-live/downloads/'
 [2026-08-19 16:41:57] douyu-live 斗鱼cookie 剩余 6.3 天
 ```
 
-剩余 ≤2 天时追加告警（提醒人工换）：
+剩余 ≤2 天时追加告警（提醒人工换）**并发送邮件到 `1211875002@qq.com`**：
 
 ```
 [2026-08-19 16:42:01] ⚠️ 斗鱼cookie 将于 6.3 天后过期，请尽快更新！运行: /usr/local/bin/update_dy_cookie.sh
+[2026-08-19 16:42:05] 邮件通知已发送 → 1211875002@qq.com
 ```
 
 查看：`ssh yoga13 'cat /var/log/dy_cookie_renew.log'`
 
-阈值可用 `THRESHOLD_DAYS` 变量调整（脚本第 10 行）。
+- 阈值可用 `THRESHOLD_DAYS` 变量调整（默认 2 天）；收件人可用 `NOTIFY_EMAIL` 覆盖（默认 `1211875002@qq.com`）；邮件脚本路径可用 `SEND_MAIL` 覆盖（默认 `/usr/local/bin/send-ali-mail.sh`，见 `ali-email-smtp.md`）
+- 依赖阿里企业邮箱 SMTP（`send-ali-mail.sh` + `~/.config/ali-mail/smtp.conf`，chmod 600）；**若服务器未部署邮件脚本，检查脚本自动降级为仅日志**，不影响主流程
+- 邮件通知场景同样覆盖：cookie 为空、缺少/无法解析 `acf_jwt_token`
 
 ### 5.4 手动换 cookie（约 1 分钟）
 
@@ -186,6 +189,7 @@ ssh yoga13 '/usr/local/bin/update_dy_cookie.sh'
 | 改了 spider.py 不生效 | 容器没重启（overlay 只改文件，需 `docker compose restart douyu-live`）|
 | 开了录制没反应 | 检查 URL_config.ini 行首是否还有 `#`；最多等 2 分钟（120s 轮询）|
 | toggle_room.sh 对 douyu-live 无效 | 它只操作 live 容器的 URL_config（见 4.2），用直接编辑方式 |
+| 没收到提醒邮件 | 1) `tail -5 /var/log/dy_cookie_renew.log` 看是否"邮件通知已发送/失败"；2) 确认服务器有 `send-ali-mail.sh` + `~/.config/ali-mail/smtp.conf`（见 `ali-email-smtp.md`）；3) 确认收件箱/垃圾箱，`NOTIFY_EMAIL` 是否被覆盖 |
 
 ## 7. 相关参考
 
