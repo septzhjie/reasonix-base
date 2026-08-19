@@ -6,7 +6,7 @@
 
 ## 1. 为什么需要 douyu-live
 
-现有 `live` 容器（DouyinLiveRecorder）是**多平台通用**录制，配置里混着抖音/快手/虎牙/B站等一堆 cookie。斗鱼有特殊性：
+此前部署过 `live` 通用容器（DouyinLiveRecorder，多平台录制，已删除）。斗鱼有特殊性：
 
 1. **取流必须带有效 cookie**，否则被降级为 540p（见 `douyu-stream-fix.md` 第 9 节）
 2. cookie 约 **7 天过期**（JWT `acf_jwt_token`），需要定期换
@@ -100,22 +100,24 @@ ssh yoga13 'docker ps --filter name=douyu-live'
 
 ### 4.2 开/关录制
 
-> ⚠️ **`/usr/local/bin/toggle_room.sh` 硬编码的是 `live` 容器的路径**（`/opt/1panel/docker/compose/config/URL_config.ini`），对 douyu-live **无效**！操作 douyu-live 请直接编辑它的 URL_config.ini。
+> ✅ 现状（2026-08-19 起）：`/usr/local/bin/toggle_room.sh` 已适配为指向 **`douyu-live`** 的 `URL_config.ini`（`/opt/1panel/docker/compose/douyu-live/config/URL_config.ini`），工作区 `toggle_room.sh` 副本与线上一致。**注意 **：它不再作用于 `live` 容器的 URL_config（`/opt/1panel/docker/compose/config/URL_config.ini`）——live 容器若仍需定时录制，要单独管理（见 `cron-scheduled-recording.md` 方案 A 备注）。
 
 ```bash
-# 开启（去掉行首#）
-ssh yoga13 'sed -i "s|^#https://www.douyu.com/6925114|https://www.douyu.com/6925114|" /opt/1panel/docker/compose/douyu-live/config/URL_config.ini'
-# 关闭（加上行首#）
-ssh yoga13 'sed -i "s|^https://www.douyu.com/6925114|#https://www.douyu.com/6925114|" /opt/1panel/docker/compose/douyu-live/config/URL_config.ini'
-# 查状态
-ssh yoga13 'docker exec douyu-live cat /app/config/URL_config.ini'
-# 查录制行为
+# 查看当前启用中的直播间（无参数，只列非 # 行；全禁用时提示"无启用中的直播间"）
+ssh yoga13 '/usr/local/bin/toggle_room.sh status'
+# 查看某 URL 状态（单行查询，含 # 禁用的也显示）
+ssh yoga13 '/usr/local/bin/toggle_room.sh status https://www.douyu.com/6925114'
+# 开启（去 #）
+ssh yoga13 '/usr/local/bin/toggle_room.sh on  https://www.douyu.com/6925114'
+# 关闭（加 #）
+ssh yoga13 '/usr/local/bin/toggle_room.sh off https://www.douyu.com/6925114'
+# 查容器录制行为
 ssh yoga13 'docker logs --since 5m douyu-live | grep -E "传入地址|正在录制|没有正在"'
 # 查产物
 ssh yoga13 'ls -laR /opt/1panel/docker/compose/douyu-live/downloads/'
 ```
 
-> 注意文件开头有 BOM（`\ufeff`），用上面的 `sed`（匹配行首 `#` 前不涉及 BOM 位置）可行；若直接 `^#` 匹配失败，改用 python 处理。
+> 注意文件开头有 BOM（`\ufeff`），脚本用 `encoding="utf-8-sig"` 读取，正常处理。
 
 ## 5. cookie 续签方案（半自动）
 
@@ -188,10 +190,10 @@ ssh yoga13 '/usr/local/bin/update_dy_cookie.sh'
 | 录出来 540p | 1) `cat /var/log/dy_cookie_renew.log` 看剩余天数；2) 可能 cookie 过期 → 跑 `update_dy_cookie.sh`；3) 改完后确认容器已重启 |
 | 改了 spider.py 不生效 | 容器没重启（overlay 只改文件，需 `docker compose restart douyu-live`）|
 | 开了录制没反应 | 检查 URL_config.ini 行首是否还有 `#`；最多等 2 分钟（120s 轮询）|
-| toggle_room.sh 对 douyu-live 无效 | 它只操作 live 容器的 URL_config（见 4.2），用直接编辑方式 |
+| toggle_room.sh 报错/找不到 URL | 确认脚本 `FILE=` 指向 douyu-live 的 URL_config（2026-08-19 已适配）；该 URL 是否存在于该文件 |
 | 没收到提醒邮件 | 1) `tail -5 /var/log/dy_cookie_renew.log` 看是否"邮件通知已发送/失败"；2) 确认服务器有 `send-ali-mail.sh` + `~/.config/ali-mail/smtp.conf`（见 `ali-email-smtp.md`）；3) 确认收件箱/垃圾箱，`NOTIFY_EMAIL` 是否被覆盖 |
 
 ## 7. 相关参考
 
 - 斗鱼取流修复细节（匿名降级原理、cookie 补丁、spider.py 改动）：`douyu-stream-fix.md`
-- live 容器定时录制（toggle_room.sh + crontab 方案）：`cron-scheduled-recording.md`
+- 定时录制（toggle_room.sh + crontab 方案）：`cron-scheduled-recording.md`

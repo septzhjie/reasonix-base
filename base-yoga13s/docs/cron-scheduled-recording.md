@@ -2,21 +2,20 @@
 
 > 需求：在某个时间段内录制某个直播间地址
 
-## 两套方案概览
+## 当前部署概览（2026-08-19 更新）
 
-**当前存在两套独立部署，按服务器区分：**
+**yoga13 现有唯一录制容器 `douyu-live`**（斗鱼专用；原 `live` 通用容器已于 2026-08-19 删除）。cone-142 另有方案 B（见文末）。
 
-| | 方案 A：yoga13 | 方案 B：cone-142 |
+| | 方案 A：yoga13（douyu-live） | 方案 B：cone-142 |
 |---|---|---|
-| 容器 | `live` | `douyin-live` |
-| 配置路径 | `/opt/1panel/docker/compose/config/URL_config.ini` | `/opt/1panel/docker/compose/live-reco/live/config/URL_config.ini` |
+| 容器 | `douyu-live` | `douyin-live`（live-reco compose 项目） |
+| 配置路径 | `/opt/1panel/docker/compose/douyu-live/config/URL_config.ini` | `/opt/1panel/docker/compose/live-reco/live/config/URL_config.ini` |
 | 任务来源 | root crontab（唯一） | **1Panel 计划任务 + root crontab 并存** |
-| 切换脚本 | `/usr/local/bin/toggle_room.sh` | `/usr/local/bin/toggle_room.sh`（已适配路径） |
-| 定时模板 | `/root/recorder_cron.template` | `/root/recorder_cron.template` |
+| 切换脚本 | `/usr/local/bin/toggle_room.sh`（已适配 douyu-live 路径） | `/usr/local/bin/toggle_room.sh`（已适配 cone-142 路径） |
 | 操作日志 | `/var/log/recorder_cron.log` | `/var/log/recorder_cron.log` |
 | URL 行格式 | `URL,画质: 名称` | `URL,主播: 名称` |
 
-> 下文"实现原理 ~ 注意事项"为**方案 A（yoga13）**的说明；**方案 B（cone-142）**见文末专节。
+> 下文"实现原理 ~ 注意事项"为**方案 A（yoga13 / douyu-live）**的说明；**方案 B（cone-142）**见文末专节。
 
 ## 实现原理
 
@@ -35,58 +34,66 @@
 
 | 项目 | 位置 |
 |---|---|
-| 切换脚本 | `/usr/local/bin/toggle_room.sh`（本地工作区也有 `toggle_room.sh` 副本） |
-| crontab 模板 | `/root/recorder_cron.template`（root crontab 已安装此模板，示例任务为注释状态） |
+| 容器 | `douyu-live`（`/opt/1panel/docker/compose/douyu-live/douyu-live.yaml`） |
+| 切换脚本 | `/usr/local/bin/toggle_room.sh`（工作区 `base-yoga13s/toggle_room.sh` 有同步副本，`FILE=` 指向 douyu-live 路径） |
 | 操作日志 | `/var/log/recorder_cron.log`（每次 on/off 落一行时间戳） |
+| cookie 检查 | `/usr/local/bin/check_dy_cookie.sh` + cron（每天 9:00）→ `/var/log/dy_cookie_renew.log` |
+
+> 斗鱼需有效 cookie 才能录原画（否则降级 540p），见 `douyu-live-container.md` 第 5 节。
 
 ## 日常操作
 
 ### 1. 查看当前是否在录 / URL 状态
 
 ```bash
-ssh yoga13 '/usr/local/bin/toggle_room.sh status'
-# → "已启用（正常监测）" 或 "已禁用（# 注释，不监测）"
+ssh yoga13 '/usr/local/bin/toggle_room.sh status'          # 列出启用中的直播间；全禁用时提示"无启用中的直播间"
+ssh yoga13 '/usr/local/bin/toggle_room.sh status https://www.douyu.com/6925114'   # 单行查询（含禁用态）
 
-ssh yoga13 'docker logs --tail 20 live | grep -E "正在录制|传入地址"'
+ssh yoga13 'docker logs --tail 20 douyu-live | grep -E "正在录制|传入地址"'
 ```
 
 ### 2. 手动开启 / 停止录制（不依赖定时）
 
 ```bash
-ssh yoga13 '/usr/local/bin/toggle_room.sh on  https://www.douyu.com/5551871'   # 开录
-ssh yoga13 '/usr/local/bin/toggle_room.sh off https://www.douyu.com/5551871'   # 停录
-# URL 关键字可省略，默认就是 https://www.douyu.com/5551871
+ssh yoga13 '/usr/local/bin/toggle_room.sh on  https://www.douyu.com/6925114'   # 开录
+ssh yoga13 '/usr/local/bin/toggle_room.sh off https://www.douyu.com/6925114'   # 停录
+# URL 关键字可省略（默认第一个非 # 行按关键字匹配）
 ```
 
 ### 3. 设置/修改"每天固定时间段"（核心）
 
-编辑 crontab（`crontab -e`），把示例行的 `#` 去掉并改成你的时间。
+编辑 crontab（`crontab -e`），去掉示例行 `#` 并改成你的时间。
 
-**当前已启用（2026-08-19 配置）：**
+**当前 crontab（2026-08-19 清理后）：仅 cookie 检查任务，无固定录制任务**
+
+```
+# douyu-live 斗鱼cookie 到期检查（每天 9:00，日志提醒）
+0 9 * * * /usr/local/bin/check_dy_cookie.sh
+```
+
+如需加固定时段录制（示例：每晚 22:00 开录 6925114，次日 01:00 停录）：
 
 ```
 # 每晚 22:00 开录，次日凌晨 01:00 停录
-0 22 * * * /usr/local/bin/toggle_room.sh on  https://www.douyu.com/5551871
-0 1  * * * /usr/local/bin/toggle_room.sh off https://www.douyu.com/5551871
+0 22 * * * /usr/local/bin/toggle_room.sh on  https://www.douyu.com/6925114
+0 1  * * * /usr/local/bin/toggle_room.sh off https://www.douyu.com/6925114
 ```
 
-- **开始时间**：`0 22 * * *`（每晚 22:00）
-- **停止时间**：`0 1 * * *`（次日凌晨 01:00；cron 跨天自然生效）
 - 改完保存即生效；可 `crontab -l` 复核
 - 其它时段示例（未启用，改时间后去掉 `#`）：
 
 ```
 # 每天 20:00-22:00 示例
-# 0 20 * * * /usr/local/bin/toggle_room.sh on  https://www.douyu.com/5551871
-# 0 22 * * * /usr/local/bin/toggle_room.sh off https://www.douyu.com/5551871
+# 0 20 * * * /usr/local/bin/toggle_room.sh on  https://www.douyu.com/6925114
+# 0 22 * * * /usr/local/bin/toggle_room.sh off https://www.douyu.com/6925114
 ```
 
 ### 4. 每周特定日子（参考）
 
 ```
 # 每周一到周五 20:00-22:00
-0 20 * * 1-5 /usr/local/bin/toggle_room.sh on  https://www.douyu.com/5551871
-0 22 * * 1-5 /usr/local/bin/toggle_room.sh off https://www.douyu.com/5551871
+0 20 * * 1-5 /usr/local/bin/toggle_room.sh on  https://www.douyu.com/6925114
+0 22 * * 1-5 /usr/local/bin/toggle_room.sh off https://www.douyu.com/6925114
 ```
 
 cron 星期语法：`0=周日, 1-5=周一~周五, 6=周六`
@@ -98,10 +105,10 @@ cron 星期语法：`0=周日, 1-5=周一~周五, 6=周六`
 ssh yoga13 'tail -10 /var/log/recorder_cron.log'
 
 # 查容器录制行为
-ssh yoga13 'docker logs --since 5m live | grep -E "传入地址|正在录制|没有正在" | tail -5'
+ssh yoga13 'docker logs --since 5m douyu-live | grep -E "传入地址|正在录制|没有正在" | tail -5'
 
 # 查产物（确认有/没有新文件）
-ssh yoga13 'ls -laR /opt/1panel/docker/compose/downloads/'
+ssh yoga13 'ls -laR /opt/1panel/docker/compose/douyu-live/downloads/'
 ```
 
 ### 6. 彻底停用定时录制
@@ -114,8 +121,8 @@ ssh yoga13 'crontab -r'    # 删除全部 crontab（只影响本服务器 root �
 ### 7. 换一个地址录制
 
 ```bash
-# 1) 在 URL_config.ini 增加目标地址行（容器内 /app/config/URL_config.ini 即宿主机 /opt/1panel/docker/compose/config/URL_config.ini）
-ssh yoga13 'echo "https://www.douyu.com/123456,原画: 房间名" >> /opt/1panel/docker/compose/config/URL_config.ini'
+# 1) 在 URL_config.ini 增加目标地址行（容器内 /app/config/URL_config.ini 即宿主机 /opt/1panel/docker/compose/douyu-live/config/URL_config.ini）
+ssh yoga13 'echo "https://www.douyu.com/123456,原画: 房间名" >> /opt/1panel/docker/compose/douyu-live/config/URL_config.ini'
 # 2) 把 cron 里的 URL 关键字换成新地址
 ssh yoga13 'crontab -e'
 ```
@@ -124,8 +131,9 @@ ssh yoga13 'crontab -e'
 
 - **容器重启后**：URL 行是 `#` 状态则不会监测；定时会把该行切回 on，所以定时开启后一切正常
 - **off 不停立即停录**？实测会停（线程被清理）；若个别平台有延迟，最多 2 分钟
-- 修改 `URL_config.ini` 请勿破坏 `[room]` 段头和其它行；main.py 偶尔会去重/重写该文件，但格式保持不变
+- 修改 `URL_config.ini` 请勿破坏行格式；main.py 偶尔会去重/重写该文件，但格式保持不变
 - 所有命令在 `yoga13` 上用 root 执行；脚本已 `chmod +x`
+- 改 overlay/cookie 后**必须重启容器**（`docker compose -f douyu-live.yaml restart douyu-live`），见 `douyu-live-container.md`
 
 ---
 

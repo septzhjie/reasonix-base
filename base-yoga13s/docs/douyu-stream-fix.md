@@ -1,6 +1,8 @@
 # 斗鱼直播取流修复记录（2026-08-18）
 
 > 适用范围：DouyinLiveRecorder v4.0.7（ihmily/douyin-live-recorder:latest），容器 `live`，由 1Panel + docker compose 部署在服务器 `yoga13`。
+>
+> ⚠️ **2026-08-19 更新：原 `live` 容器已删除**，斗鱼录制迁移到专用容器 `douyu-live`（`/opt/1panel/docker/compose/douyu-live/`，含同样 overlay 修复版 spider.py）。本文修复内容对 `douyu-live` 同样适用（md5 一致），日常运维见 `douyu-live-container.md`。
 
 ## 1. 症状
 
