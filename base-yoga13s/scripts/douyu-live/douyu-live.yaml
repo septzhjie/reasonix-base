@@ -1,0 +1,15 @@
+services:
+  douyu-live:
+    container_name: douyu-live
+    image: ihmily/douyin-live-recorder:latest
+    environment:
+      - TERM=xterm-256color
+    tty: true
+    stdin_open: true
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./backup_config:/app/backup_config
+      - ./downloads:/app/downloads
+      - ./code_overlay/src/spider.py:/app/src/spider.py
+    restart: always
