@@ -13,6 +13,36 @@
   - `backup_config/` → `/app/backup_config`
   - `downloads/` → `/app/downloads`（录制产物）
 
+## 网络拓扑（重要背景）
+
+```
+yoga13（宿主机，Ubuntu 22.04，NetworkManager）
+├── wlp1s0  WiFi 192.168.5.4/24    ← 唯一能走 250 代理的接口
+├── enx00e04c680139 USB有线 → br0（桥）192.168.5.3/24（内含 vnet3）
+└── KVM 虚拟机 istoreos（旁路由 192.168.5.250，fake-ip 代理）← 跑在 yoga13 上！
+```
+
+- **192.168.5.250 是 yoga13 上 KVM 跑的 iStoreOS 虚拟机**（旁路由 + fake-ip 代理），部署详见 `docs/istoreos-kvm-deploy.md`
+- 250 网关**只代理 WiFi(wlp1s0) 口的流量**；有线(br0) 走 250 代理流量会被丢弃
+- **192.168.5.1（主路由）DNS 污染**：会把 `www.google.com` 解析成 `127.0.0.1`，只要 DNS 走 br0 链路 Google 必不通
+- 完整网络笔记：`docs/wlp1s0-static-networking.md`
+
+## wlp1s0 网络切换脚本（2026-08-21）
+
+`scripts/wlp1s0-net.sh`（set / restore / check 三模式，幂等）：
+
+```bash
+./scripts/wlp1s0-net.sh set      # 静态：IP=当前地址、网关/DNS=192.168.5.250、DNS/路由双优先
+./scripts/wlp1s0-net.sh restore  # 恢复 DHCP（清空全部静态项）
+./scripts/wlp1s0-net.sh check    # 只读检查
+```
+
+两个关键参数（缺一不可）：
+- `ipv4.dns-priority -100` → 防 192.168.5.1 DNS 污染（否则 google 解析成 127.0.0.1）
+- `ipv4.route-metric 100` → 默认路由优先走 wlp1s0/250（NM 对 Wi-Fi 有 20000 基线叠加，激活瞬间显示 20100 是过渡态，勿误判，脚本已内置 sleep 5）
+
+注意：恢复 DHCP 后 Google 不通**属预期**（无 250 DNS/代理）；要 Google 必须处于 set 状态。
+
 ## 已做的修复（2026-08-18）
 
 斗鱼直播取流功能已失效并被修复，详见 **`docs/douyu-stream-fix.md`**。核心结论：
@@ -40,16 +70,29 @@ ssh yoga13 'cd /opt/1panel/docker/compose && docker compose -f douyin-live-recor
 
 ## 部署脚本（推荐）
 
-本地工作区有 `deploy-fix.sh`，一键部署斗鱼修复到服务器（幂等、带校验）：
+本地工作区有 `scripts/deploy-fix.sh`，一键部署斗鱼修复到服务器（幂等、带校验）：
 
 ```bash
-./deploy-fix.sh --check   # 只检查现状：md5 对账 / 挂载 / 容器状态
-./deploy-fix.sh           # 部署：上传→挂载确认→重建容器→md5 验证→日志查错
+./scripts/deploy-fix.sh --check   # 只检查现状：md5 对账 / 挂载 / 容器状态
+./scripts/deploy-fix.sh           # 部署：上传→挂载确认→重建容器→md5 验证→日志查错
 ```
 
 - 修复文件来源：本地 `docs/spider.py.patched` → 服务器 `/opt/1panel/docker/compose/code_overlay/src/spider.py`
 - md5 一致时跳过上传；compose 已有挂载行时跳过修改
 - 注意：完整部署会重建容器，中断当前录制片段（脚本会等待 60s 查日志验证）
+
+## 工作区其他脚本/文档
+
+| 文件 | 用途 |
+|---|---|
+| `scripts/wlp1s0-net.sh` | wlp1s0 静态(250代理)/恢复 DHCP 切换（详见上方章节） |
+| `scripts/deploy-fix.sh` | 部署斗鱼取流修复（详见上方章节） |
+| `scripts/toggle_room.sh` | 定时录制开关（服务器 `/usr/local/bin/toggle_room.sh` 的本地副本） |
+| `scripts/send-ali-mail.sh` | 阿里企业邮箱 SMTP 发信（`docs/ali-email-smtp.md`） |
+| `scripts/douyu-live/check_dy_cookie.sh` | 斗鱼 cookie 有效期检查（≤2天发提醒邮件） |
+| `scripts/douyu-live/update_dy_cookie.sh` | 手动更新斗鱼 cookie |
+| `docs/istoreos-kvm-deploy.md` | KVM 部署 iStoreOS 旁路由 192.168.5.250（已部署） |
+| `docs/wlp1s0-static-networking.md` | 双网卡/代理网关/DNS 污染完整笔记 |
 
 ## 配置要点
 
@@ -70,3 +113,5 @@ ssh yoga13 'cd /opt/1panel/docker/compose && docker compose -f douyin-live-recor
 - 斗鱼签名算法可能再次变更；若日志重现 `鉴权失败`/`时间戳错误`/`NoneType`，按 `docs/douyu-stream-fix.md` 的"重新验证"章节排查
 - 1Panel 面板侧改动 compose 可能与此文件冲突，改动前先备份
 - 停止维护的软件，平台接口变更后大概率需要再次手修
+- **网络坑**：192.168.5.1 网关把 google 解析成 127.0.0.1（DNS 污染）；250 只代理 WiFi 口；NM 对 Wi-Fi 路由有 20000 基线（metric 过渡态）。排障先看 `resolvectl query www.google.com` 的 `-- link:`（应为 wlp1s0）与 `ip route show default`（应 via 192.168.5.250 dev wlp1s0）；详情见 `docs/wlp1s0-static-networking.md`
+- **iStoreOS（250）是 yoga13 的 KVM 虚拟机**：重启/误关虚拟机 = 全家代理/wifi 静态网关失效；虚拟机关闭期间 wlp1s0 静态网关不可用，需 `restore` 回 DHCP 或启动虚拟机

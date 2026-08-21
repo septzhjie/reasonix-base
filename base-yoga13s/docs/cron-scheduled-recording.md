@@ -35,7 +35,7 @@
 | 项目 | 位置 |
 |---|---|
 | 容器 | `douyu-live`（`/opt/1panel/docker/compose/douyu-live/douyu-live.yaml`） |
-| 切换脚本 | `/usr/local/bin/toggle_room.sh`（工作区 `base-yoga13s/toggle_room.sh` 有同步副本，`FILE=` 指向 douyu-live 路径） |
+| 切换脚本 | `/usr/local/bin/toggle_room.sh`（工作区 `base-yoga13s/scripts/toggle_room.sh` 有同步副本，`FILE=` 指向 douyu-live 路径） |
 | 操作日志 | `/var/log/recorder_cron.log`（每次 on/off 落一行时间戳） |
 | cookie 检查 | `/usr/local/bin/check_dy_cookie.sh` + cron（每天 9:00）→ `/var/log/dy_cookie_renew.log` |
 
@@ -152,7 +152,7 @@ ssh yoga13 'crontab -e'
 
 | 项目 | 位置 |
 |---|---|
-| 切换脚本 | `/usr/local/bin/toggle_room.sh`（从 workspace `base-yoga13s/toggle_room.sh` 拷贝，已适配 cone-142 路径） |
+| 切换脚本 | `/usr/local/bin/toggle_room.sh`（从 workspace `base-yoga13s/scripts/toggle_room.sh` 拷贝，已适配 cone-142 路径） |
 | 定时模板 | `/root/recorder_cron.template`（root crontab 已安装模板，12 条任务行） |
 | 操作日志 | `/var/log/recorder_cron.log` |
 

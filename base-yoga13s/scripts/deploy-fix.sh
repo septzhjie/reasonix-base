@@ -10,8 +10,8 @@
 #   4. 验证：容器内 md5 与 overlay 一致 + 日志无 ERROR + 最近日志正常
 #
 # 用法：
-#   ./deploy-fix.sh            # 部署 + 验证
-#   ./deploy-fix.sh --check    # 只检查现状（md5 对账 / 挂载 / 容器状态），不部署
+#   ./scripts/deploy-fix.sh            # 部署 + 验证
+#   ./scripts/deploy-fix.sh --check    # 只检查现状（md5 对账 / 挂载 / 容器状态），不部署
 #
 # 依赖：本地有 ssh 访问 yoga13（root），服务器有 docker compose。
 
@@ -22,7 +22,7 @@ COMPOSE_DIR="/opt/1panel/docker/compose"
 COMPOSE_FILE="${COMPOSE_DIR}/douyin-live-recorder.yaml"
 OVERLAY_DIR="${COMPOSE_DIR}/code_overlay/src"
 OVERLAY_FILE="${OVERLAY_DIR}/spider.py"
-LOCAL_PATCH="$(cd "$(dirname "$0")" && pwd)/docs/spider.py.patched"
+LOCAL_PATCH="$(cd "$(dirname "$0")/.." && pwd)/docs/spider.py.patched"
 CONTAINER="live"
 
 log()  { printf '\033[1;34m[deploy]\033[0m %s\n' "$*"; }
